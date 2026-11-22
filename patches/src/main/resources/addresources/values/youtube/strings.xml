@@ -495,6 +495,9 @@ Reports are public and are reviewed before a channel is added to a list. Removal
     <string name="morphe_copy_comments_title">Copy comments</string>
     <string name="morphe_copy_comments_summary">Tap and hold a comment to copy it</string>
     <string name="morphe_copy_comments_success">Comment copied to clipboard</string>
+    <!-- layout.commentnames.commentChannelNamesPatch -->
+    <string name="morphe_comment_channel_names_title">Show channel names in comments</string>
+    <string name="morphe_comment_channel_names_summary">Shows the channel name of comment authors instead of their @handle</string>
     <string name="morphe_copy_select_text_title">Select text of descriptions and posts</string>
     <string name="morphe_copy_select_text_summary">Tap and hold a video description or a post to select and copy any part of it</string>
     <string name="morphe_copy_select_text_dialog_title">Select text</string>

@@ -1,0 +1,97 @@
+# Keeps this fork in sync with the official Morphe patches and publishes a
+# Morphe Manager compatible release whenever something changed.
+name: Sync upstream and release
+
+on:
+  schedule:
+    - cron: '17 4 * * *' # Daily.
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths-ignore: [ 'patches-bundle.json' ]
+
+permissions:
+  contents: write
+  packages: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Merge official Morphe patches
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/MorpheApp/morphe-patches.git
+          git fetch --tags upstream main
+          if ! git merge --no-edit upstream/main; then
+            # The bundle manifest is regenerated below, so ours always wins.
+            git checkout --ours patches-bundle.json 2>/dev/null && git add patches-bundle.json || true
+            if git diff --name-only --diff-filter=U | grep -q .; then
+              echo "::error::Merge conflict with upstream in:"
+              git diff --name-only --diff-filter=U
+              exit 1
+            fi
+            git commit --no-edit
+          fi
+          git push origin HEAD:main
+
+      - name: Decide whether to release
+        id: check
+        run: |
+          UPSTREAM_VERSION=$(grep -E '^version *=' gradle.properties | sed -E 's/^version *= *//')
+          LAST_TAG=$(git tag --list 'cn-v*' --sort=-creatordate | head -n1)
+          if [ -n "$LAST_TAG" ] && git diff --quiet "$LAST_TAG" HEAD -- . ':(exclude)patches-bundle.json'; then
+            echo "Nothing changed since $LAST_TAG"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "version=${UPSTREAM_VERSION}-cn.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Java
+        if: steps.check.outputs.release == 'true'
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Build patches
+        if: steps.check.outputs.release == 'true'
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./gradlew :patches:buildAndroid --no-daemon
+
+      - name: Publish release and bundle manifest
+        if: steps.check.outputs.release == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.check.outputs.version }}
+        run: |
+          TAG="cn-v${VERSION}"
+          ASSET="patches-${VERSION}.mpp"
+          cp patches/build/libs/patches-*.mpp "$ASSET"
+          NOTES="Official Morphe patches $(echo "$VERSION" | sed 's/-cn.*//') plus **Show channel names in comments**."
+          gh release create "$TAG" "$ASSET" --title "$VERSION" --notes "$NOTES" --target "$(git rev-parse HEAD)"
+
+          # No public_key: Morphe Manager accepts unsigned bundles from this source.
+          jq -n \
+            --arg created "$(date -u +%Y-%m-%dT%H:%M:%S)" \
+            --arg notes "$NOTES" \
+            --arg url "https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${ASSET}" \
+            --arg version "$VERSION" \
+            '{created_at: $created, description: $notes, download_url: $url, signature_download_url: "", version: $version}' \
+            > patches-bundle.json
+          git add patches-bundle.json
+          git commit -m "chore: release ${VERSION}"
+          git push origin HEAD:main
