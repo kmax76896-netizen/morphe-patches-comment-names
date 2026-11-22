@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -60,7 +60,7 @@ jobs:
 
       - name: Set up Java
         if: steps.check.outputs.release == 'true'
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: '21'
@@ -82,7 +82,7 @@ jobs:
           ASSET="patches-${VERSION}.mpp"
           cp patches/build/libs/patches-*.mpp "$ASSET"
           NOTES="Official Morphe patches $(echo "$VERSION" | sed 's/-cn.*//') plus **Show channel names in comments**."
-          gh release create "$TAG" "$ASSET" --title "$VERSION" --notes "$NOTES" --target "$(git rev-parse HEAD)"
+          gh release create "$TAG" "$ASSET" -R "$GITHUB_REPOSITORY" --title "$VERSION" --notes "$NOTES" --target "$(git rev-parse HEAD)"
 
           # No public_key: Morphe Manager accepts unsigned bundles from this source.
           jq -n \
